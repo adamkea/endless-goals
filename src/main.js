@@ -1,7 +1,13 @@
 import * as THREE from 'three';
 import { createRunner, animateRunner } from './runner.js';
 import { createPitch, updatePitch } from './pitch.js';
-import { createBall, updateBall, kickBall, BALL_RADIUS } from './ball.js';
+import {
+  createBall,
+  updateBall,
+  kickBall,
+  predictShotPath,
+  BALL_RADIUS,
+} from './ball.js';
 import { ShootingControls } from './shooting.js';
 import { Input } from './input.js';
 
@@ -77,6 +83,30 @@ const reticle = new THREE.Mesh(
 reticle.visible = false;
 scene.add(reticle);
 
+// Aim line: dashed preview of the shot's flight from the ball to the cursor,
+// bending with the curve and lengthening with power
+const MAX_PATH_POINTS = 96;
+const pathPositions = new Float32Array(MAX_PATH_POINTS * 3);
+const pathGeometry = new THREE.BufferGeometry();
+pathGeometry.setAttribute(
+  'position',
+  new THREE.BufferAttribute(pathPositions, 3)
+);
+const aimLine = new THREE.Line(
+  pathGeometry,
+  new THREE.LineDashedMaterial({
+    color: 0xffffff,
+    dashSize: 0.6,
+    gapSize: 0.35,
+    transparent: true,
+    opacity: 0.85,
+    depthTest: false,
+  })
+);
+aimLine.frustumCulled = false;
+aimLine.visible = false;
+scene.add(aimLine);
+
 const raycaster = new THREE.Raycaster();
 
 /** Project a screen-space (NDC) click onto the downfield aim plane. */
@@ -138,8 +168,24 @@ function tick() {
     reticle.visible = true;
     // Tighten the ring as power builds
     reticle.scale.setScalar(1.4 - shooting.power * 0.6);
+
+    // Preview the flight the shot would take if released this instant
+    const pointCount = predictShotPath(
+      ball,
+      aimPoint,
+      shooting.power,
+      shooting.curve,
+      RUN_SPEED,
+      pathPositions,
+      MAX_PATH_POINTS
+    );
+    pathGeometry.setDrawRange(0, pointCount);
+    pathGeometry.attributes.position.needsUpdate = true;
+    aimLine.computeLineDistances();
+    aimLine.visible = true;
   } else {
     reticle.visible = false;
+    aimLine.visible = false;
   }
 
   const shot = shooting.consumeShot();

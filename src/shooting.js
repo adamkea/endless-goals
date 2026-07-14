@@ -3,7 +3,8 @@ import * as THREE from 'three';
 // Click-and-hold shot controls:
 //  - pointerdown picks the aim point (where on screen the shot should go)
 //    and starts charging power
-//  - dragging the pointer sideways while holding sets the curve (-1..1)
+//  - the aim keeps tracking the cursor while holding, and dragging sideways
+//    from the press point also sets the curve (-1..1)
 //  - pointerup fires with whatever power has built up
 // The controller also drives the power/curve HUD while charging.
 
@@ -46,6 +47,10 @@ export class ShootingControls {
         (e.clientX - this._pressX) / CURVE_RANGE_PX,
         -1,
         1
+      );
+      this.aimNdc.set(
+        (e.clientX / window.innerWidth) * 2 - 1,
+        -(e.clientY / window.innerHeight) * 2 + 1
       );
     });
 

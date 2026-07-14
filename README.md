@@ -8,10 +8,13 @@ An endless 3D runner football game mockup built with [three.js](https://threejs.
 - Third-person camera following from behind
 - Endless scrolling pitch (recycled ground segments)
 - Ball dribbled at the player's feet while running
-- Click-and-hold shooting: the click picks the aim point (shown as a ring),
+- Click-and-hold shooting: the aim follows the cursor (shown as a ring),
   holding charges the power meter, dragging sideways bends the shot, and
   releasing fires it — the spent ball rolls back and is collected into the
   dribble
+- While holding, a dashed line traces the shot's predicted flight to the
+  cursor — its length shows the range (growing with power) and its bend
+  shows the curve
 - Controls: **← / →** or **A / D** to move left/right; **mouse** to shoot
 
 ## Running
