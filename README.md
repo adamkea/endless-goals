@@ -15,6 +15,8 @@ An endless 3D runner football game mockup built with [three.js](https://threejs.
 - While holding, a dashed line traces the shot's predicted flight to the
   cursor — its length shows the range (growing with power) and its bend
   shows the curve
+- The player plants to shoot: running winds down while charging and only
+  resumes 2 seconds after the ball is struck
 - Controls: **← / →** or **A / D** to move left/right; **mouse** to shoot
 
 ## Running

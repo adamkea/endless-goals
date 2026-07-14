@@ -18,6 +18,7 @@ const LATERAL_LIMIT = 6; // how far left/right the player can go
 const LEAN_ANGLE = 0.35; // max sideways lean while strafing (radians)
 const AIM_PLANE_Z = -45; // clicks aim at a vertical plane this far downfield
 const KICK_DURATION = 0.35; // seconds of kick-leg animation after a shot
+const RUN_RESUME_DELAY = 2; // seconds standing still after a shot is released
 
 // --- Renderer / scene -----------------------------------------------------
 const container = document.getElementById('app');
@@ -124,6 +125,12 @@ function aimTarget(ndc, out) {
 const aimPoint = new THREE.Vector3();
 let kickTimer = 0;
 
+// The player plants to shoot: speed winds down while charging, stays zero
+// for a beat after the shot, then ramps back up to full sprint.
+let runSpeed = RUN_SPEED;
+let runResumeTimer = 0;
+let stridePhase = 0;
+
 // --- Camera rig: third person, behind and above the runner -----------------
 const CAMERA_OFFSET = new THREE.Vector3(0, 4.2, 7.5);
 const LOOK_OFFSET = new THREE.Vector3(0, 1.5, -6);
@@ -134,11 +141,22 @@ const clock = new THREE.Clock();
 
 function tick() {
   const dt = Math.min(clock.getDelta(), 0.05);
-  const elapsed = clock.elapsedTime;
 
-  // Lateral movement (the only control for now)
+  // Plant to shoot: stop quickly while charging or just after a shot,
+  // accelerate back up to speed otherwise
+  runResumeTimer = Math.max(0, runResumeTimer - dt);
+  const wantsToRun = !shooting.charging && runResumeTimer <= 0;
+  runSpeed = THREE.MathUtils.damp(
+    runSpeed,
+    wantsToRun ? RUN_SPEED : 0,
+    wantsToRun ? 3 : 10,
+    dt
+  );
+  const moveFactor = runSpeed / RUN_SPEED;
+
+  // Lateral movement, planted while shooting
   const move = input.axis(); // -1 left, +1 right, 0 idle
-  runner.group.position.x += move * LATERAL_SPEED * dt;
+  runner.group.position.x += move * LATERAL_SPEED * moveFactor * dt;
   runner.group.position.x = THREE.MathUtils.clamp(
     runner.group.position.x,
     -LATERAL_LIMIT,
@@ -148,16 +166,17 @@ function tick() {
   // Lean into the strafe for a bit of life
   runner.group.rotation.z = THREE.MathUtils.damp(
     runner.group.rotation.z,
-    -move * LEAN_ANGLE,
+    -move * LEAN_ANGLE * moveFactor,
     8,
     dt
   );
 
   // The runner stays near the origin; the world scrolls past to fake
   // endless forward motion.
-  const scrollDistance = RUN_SPEED * dt;
+  const scrollDistance = runSpeed * dt;
   updatePitch(pitch, scrollDistance);
-  animateRunner(runner, elapsed, RUN_SPEED);
+  stridePhase += runSpeed * 0.9 * dt;
+  animateRunner(runner, stridePhase, moveFactor);
 
   // --- Shooting -------------------------------------------------------------
   shooting.update(dt);
@@ -175,7 +194,7 @@ function tick() {
       aimPoint,
       shooting.power,
       shooting.curve,
-      RUN_SPEED,
+      runSpeed,
       pathPositions,
       MAX_PATH_POINTS
     );
@@ -192,6 +211,7 @@ function tick() {
   if (shot && ball.state === 'dribble') {
     kickBall(ball, aimTarget(shot.ndc, aimPoint), shot.power, shot.curve);
     kickTimer = KICK_DURATION;
+    runResumeTimer = RUN_RESUME_DELAY;
   }
 
   updateBall(ball, dt, scrollDistance, runner.group.position.x);

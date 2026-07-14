@@ -97,22 +97,23 @@ export function createRunner() {
 
 /**
  * Procedural run cycle: opposite arm/leg swing plus a little bounce.
- * `speed` scales the stride frequency so it stays in step with the ground.
+ * `stridePhase` is the accumulated stride angle (advance it by
+ * speed * dt so it stays in step with the ground even as speed changes),
+ * and `moveFactor` (0..1) fades the whole cycle out into a standing pose.
  */
-export function animateRunner(runner, time, speed) {
-  const stride = time * speed * 0.9;
-  const swing = Math.sin(stride);
+export function animateRunner(runner, stridePhase, moveFactor) {
+  const swing = Math.sin(stridePhase) * moveFactor;
 
   runner.legs[0].rotation.x = swing * 0.9;
   runner.legs[1].rotation.x = -swing * 0.9;
   // Knees bend more on the back-swing
-  runner.knees[0].rotation.x = Math.max(0, -swing) * 1.4 + 0.15;
-  runner.knees[1].rotation.x = Math.max(0, swing) * 1.4 + 0.15;
+  runner.knees[0].rotation.x = Math.max(0, -swing) * 1.4 + 0.15 * moveFactor;
+  runner.knees[1].rotation.x = Math.max(0, swing) * 1.4 + 0.15 * moveFactor;
 
   runner.arms[0].rotation.x = -swing * 0.8;
   runner.arms[1].rotation.x = swing * 0.8;
 
   // Bounce twice per stride and lean slightly forward into the run
-  runner.group.position.y = Math.abs(Math.sin(stride)) * 0.12;
-  runner.group.rotation.x = 0.12;
+  runner.group.position.y = Math.abs(Math.sin(stridePhase)) * 0.12 * moveFactor;
+  runner.group.rotation.x = 0.12 * moveFactor;
 }
