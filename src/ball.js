@@ -11,9 +11,10 @@ import * as THREE from 'three';
 export const BALL_RADIUS = 0.32;
 
 const GRAVITY = 24;
-const CURVE_ACCEL = 30; // lateral acceleration at full curve (units/s^2)
+const CURVE_KICK = 0.6; // radians the launch is pre-rotated against the curve
+const LOFT = 4; // extra elevation multiplier when aiming above the ground
 const MIN_SHOT_SPEED = 18;
-const MAX_SHOT_SPEED = 46;
+const MAX_SHOT_SPEED = 50;
 const BOUNCE_DAMPING = 0.55;
 const BOUNCE_SPEED_LOSS = 0.8; // horizontal speed kept per bounce
 const MIN_BOUNCE_SPEED = 1.5; // below this vertical speed the ball rolls
@@ -62,7 +63,9 @@ export function createBall() {
     mesh,
     state: 'dribble',
     velocity: new THREE.Vector3(),
-    curve: 0,
+    curveAccel: 0,
+    curveTime: 0,
+    flightTime: 0,
     bounced: false,
   };
 }
@@ -71,20 +74,39 @@ export function createBall() {
  * Initial velocity of a shot from `from` toward `target`.
  * `power` (0..1) sets the speed; `curve` (-1..1) pre-rotates the direction
  * against the curve so the ball swings out and bends back in toward the aim
- * point, like a real curled shot.
+ * point, like a real curled shot. Aiming above the ground steepens the
+ * launch angle (LOFT), so power decides whether the same aim rips into the
+ * top corner or sails way over the bar.
  */
 export function computeShotVelocity(from, target, power, curve, out) {
-  out.copy(target).sub(from).normalize();
-  out.applyAxisAngle(UP, -curve * 0.35);
+  out.copy(target).sub(from);
+  out.y = Math.max(0, out.y) * LOFT;
+  out.normalize();
+  out.applyAxisAngle(UP, curve * CURVE_KICK);
   return out.multiplyScalar(
     MIN_SHOT_SPEED + power * (MAX_SHOT_SPEED - MIN_SHOT_SPEED)
   );
 }
 
+/**
+ * The sideways force that bends a curled shot, sized per shot: over the
+ * estimated time to reach the aim point it exactly cancels the pre-rotated
+ * launch offset, so the ball swings wide and comes back to the target no
+ * matter the power or loft. The force stops after that time.
+ */
+function curveForce(from, target, speed, curve) {
+  const time = Math.max(0.2, from.distanceTo(target) / speed);
+  return { accel: (2 * speed * Math.sin(CURVE_KICK * curve)) / time, time };
+}
+
 /** Launch the ball from its current position toward `target`. */
 export function kickBall(ball, target, power, curve) {
   computeShotVelocity(ball.mesh.position, target, power, curve, ball.velocity);
-  ball.curve = curve;
+  const speed = ball.velocity.length();
+  const { accel, time } = curveForce(ball.mesh.position, target, speed, curve);
+  ball.curveAccel = accel;
+  ball.curveTime = time;
+  ball.flightTime = 0;
   ball.bounced = false;
   ball.state = 'flight';
 }
@@ -102,8 +124,14 @@ const _predictVel = new THREE.Vector3();
 export function predictShotPath(ball, target, power, curve, scrollSpeed, out, maxPoints) {
   const pos = _predictPos.copy(ball.mesh.position);
   const vel = computeShotVelocity(pos, target, power, curve, _predictVel);
+  const { accel, time: curveTime } = curveForce(
+    ball.mesh.position,
+    target,
+    vel.length(),
+    curve
+  );
   const dt = 1 / 30;
-  let bounced = false;
+  let flightTime = 0;
   let count = 0;
   while (count < maxPoints) {
     out[count * 3] = pos.x;
@@ -111,8 +139,9 @@ export function predictShotPath(ball, target, power, curve, scrollSpeed, out, ma
     out[count * 3 + 2] = pos.z;
     count++;
 
+    flightTime += dt;
     vel.y -= GRAVITY * dt;
-    if (!bounced) vel.x += curve * CURVE_ACCEL * dt;
+    if (flightTime < curveTime) vel.x += accel * dt;
     pos.addScaledVector(vel, dt);
     pos.z += scrollSpeed * dt;
 
@@ -122,10 +151,8 @@ export function predictShotPath(ball, target, power, curve, scrollSpeed, out, ma
         vel.y *= -BOUNCE_DAMPING;
         vel.x *= BOUNCE_SPEED_LOSS;
         vel.z *= BOUNCE_SPEED_LOSS;
-        bounced = true;
       } else {
         vel.y = 0;
-        bounced = true;
         const friction = Math.exp(-ROLL_FRICTION * dt);
         vel.x *= friction;
         vel.z *= friction;
@@ -160,9 +187,10 @@ export function updateBall(ball, dt, scrollDistance, playerX) {
   }
 
   // --- Flight ---------------------------------------------------------------
+  ball.flightTime += dt;
   ball.velocity.y -= GRAVITY * dt;
-  if (!ball.bounced) {
-    ball.velocity.x += ball.curve * CURVE_ACCEL * dt;
+  if (ball.flightTime < ball.curveTime) {
+    ball.velocity.x += ball.curveAccel * dt;
   }
   m.position.addScaledVector(ball.velocity, dt);
   // The world scrolls toward the camera; a kicked ball scrolls with it

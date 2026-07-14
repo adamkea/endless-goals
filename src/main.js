@@ -86,7 +86,7 @@ scene.add(reticle);
 
 // Aim line: dashed preview of the shot's flight from the ball to the cursor,
 // bending with the curve and lengthening with power
-const MAX_PATH_POINTS = 96;
+const MAX_PATH_POINTS = 140;
 const pathPositions = new Float32Array(MAX_PATH_POINTS * 3);
 const pathGeometry = new THREE.BufferGeometry();
 pathGeometry.setAttribute(
@@ -118,7 +118,7 @@ function aimTarget(ndc, out) {
   if (!Number.isFinite(t) || t <= 0) t = -AIM_PLANE_Z;
   out.copy(origin).addScaledVector(direction, t);
   out.x = THREE.MathUtils.clamp(out.x, -24, 24);
-  out.y = THREE.MathUtils.clamp(out.y, BALL_RADIUS, 14);
+  out.y = THREE.MathUtils.clamp(out.y, BALL_RADIUS, 22);
   return out;
 }
 

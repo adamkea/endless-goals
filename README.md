@@ -11,7 +11,8 @@ An endless 3D runner football game mockup built with [three.js](https://threejs.
 - Click-and-hold shooting: the aim follows the cursor (shown as a ring),
   holding charges the power meter, dragging sideways bends the shot, and
   releasing fires it — the spent ball rolls back and is collected into the
-  dribble
+  dribble. Aiming above the horizon lofts the ball; with enough power it
+  flies top-corner high and beyond
 - While holding, a dashed line traces the shot's predicted flight to the
   cursor — its length shows the range (growing with power) and its bend
   shows the curve
