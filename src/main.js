@@ -7,9 +7,11 @@ import {
   kickBall,
   predictShotPath,
   BALL_RADIUS,
+  DRIBBLE_OFFSET,
 } from './ball.js';
 import { ShootingControls } from './shooting.js';
 import { Input } from './input.js';
+import { createGoal, updateGoal, disposeGoal } from './goal.js';
 
 // --- Tunables -------------------------------------------------------------
 const RUN_SPEED = 12; // forward speed (world units / s) the pitch scrolls at
@@ -19,6 +21,14 @@ const LEAN_ANGLE = 0.35; // max sideways lean while strafing (radians)
 const AIM_PLANE_Z = -45; // clicks aim at a vertical plane this far downfield
 const KICK_DURATION = 0.35; // seconds of kick-leg animation after a shot
 const RUN_RESUME_DELAY = 2; // seconds standing still after a shot is released
+
+// --- Goal loop tunables ---------------------------------------------------
+const GOAL_INTERVAL = 50; // distance run after a goal before the next spawns
+const GOAL_SPAWN_Z = -110; // goals fade in from the fog this far downfield
+const GOAL_ENGAGE_Z = -18; // goal distance at which the player is held to shoot
+const GOAL_DESPAWN_Z = 18; // a passed goal is removed once this far behind
+const RETRY_DELAY = 1.1; // seconds a dead shot lies around before a new ball
+const BANNER_TIME = 2; // seconds the GOAL! banner stays up
 
 // --- Renderer / scene -----------------------------------------------------
 const container = document.getElementById('app');
@@ -110,12 +120,16 @@ scene.add(aimLine);
 
 const raycaster = new THREE.Raycaster();
 
-/** Project a screen-space (NDC) click onto the downfield aim plane. */
+// Clicks normally aim at a fixed downfield plane; during a shootout the
+// plane snaps to the goal line so the reticle sits on the goal itself.
+let aimPlaneZ = AIM_PLANE_Z;
+
+/** Project a screen-space (NDC) click onto the current aim plane. */
 function aimTarget(ndc, out) {
   raycaster.setFromCamera(ndc, camera);
   const { origin, direction } = raycaster.ray;
-  let t = (AIM_PLANE_Z - origin.z) / direction.z;
-  if (!Number.isFinite(t) || t <= 0) t = -AIM_PLANE_Z;
+  let t = (aimPlaneZ - origin.z) / direction.z;
+  if (!Number.isFinite(t) || t <= 0) t = -aimPlaneZ;
   out.copy(origin).addScaledVector(direction, t);
   out.x = THREE.MathUtils.clamp(out.x, -24, 24);
   out.y = THREE.MathUtils.clamp(out.y, BALL_RADIUS, 22);
@@ -131,6 +145,26 @@ let runSpeed = RUN_SPEED;
 let runResumeTimer = 0;
 let stridePhase = 0;
 
+// --- The goal loop ----------------------------------------------------------
+// Run -> a goal (with keeper) scrolls in from the fog -> the player is held
+// at the edge of the box until they beat the keeper -> the keeper drops, the
+// run resumes through the goal mouth, and the next goal is queued by distance.
+let gameState = 'run'; // 'run' | 'shootout'
+let activeGoal = null;
+let distanceSinceGoal = GOAL_INTERVAL * 0.6; // first goal arrives a bit sooner
+let retryTimer = 0; // shootout only: time a spent shot has been dead
+let goalsScored = 0;
+let bannerTimer = 0;
+
+const scoreEl = document.getElementById('score');
+const bannerEl = document.getElementById('banner');
+
+function showBanner(text, seconds) {
+  bannerEl.textContent = text;
+  bannerEl.classList.add('show');
+  bannerTimer = seconds;
+}
+
 // --- Camera rig: third person, behind and above the runner -----------------
 const CAMERA_OFFSET = new THREE.Vector3(0, 4.2, 7.5);
 const LOOK_OFFSET = new THREE.Vector3(0, 1.5, -6);
@@ -143,9 +177,11 @@ function tick() {
   const dt = Math.min(clock.getDelta(), 0.05);
 
   // Plant to shoot: stop quickly while charging or just after a shot,
-  // accelerate back up to speed otherwise
+  // accelerate back up to speed otherwise. A shootout holds the player at
+  // the box until the keeper is beaten.
   runResumeTimer = Math.max(0, runResumeTimer - dt);
-  const wantsToRun = !shooting.charging && runResumeTimer <= 0;
+  const wantsToRun =
+    gameState === 'run' && !shooting.charging && runResumeTimer <= 0;
   runSpeed = THREE.MathUtils.damp(
     runSpeed,
     wantsToRun ? RUN_SPEED : 0,
@@ -177,6 +213,41 @@ function tick() {
   updatePitch(pitch, scrollDistance);
   stridePhase += runSpeed * 0.9 * dt;
   animateRunner(runner, stridePhase, moveFactor);
+
+  // --- Goal loop ------------------------------------------------------------
+  if (activeGoal) {
+    // The goal rides the scrolling world toward the player
+    activeGoal.group.position.z += scrollDistance;
+
+    // Reaching the edge of the box stops the run until a goal is scored
+    if (
+      gameState === 'run' &&
+      !activeGoal.scored &&
+      activeGoal.group.position.z >= GOAL_ENGAGE_Z
+    ) {
+      gameState = 'shootout';
+      retryTimer = 0;
+    }
+
+    // A beaten goal scrolls off behind the camera and is recycled
+    if (activeGoal.group.position.z > GOAL_DESPAWN_Z) {
+      scene.remove(activeGoal.group);
+      disposeGoal(activeGoal);
+      activeGoal = null;
+    }
+  } else {
+    // Queue the next goal by distance run
+    distanceSinceGoal += scrollDistance;
+    if (distanceSinceGoal >= GOAL_INTERVAL) {
+      distanceSinceGoal = 0;
+      activeGoal = createGoal(GOAL_SPAWN_Z);
+      scene.add(activeGoal.group);
+    }
+  }
+
+  // While held at the box, clicks aim straight at the goal plane
+  const shootingAtGoal = gameState === 'shootout' && activeGoal;
+  aimPlaneZ = shootingAtGoal ? activeGoal.group.position.z : AIM_PLANE_Z;
 
   // --- Shooting -------------------------------------------------------------
   shooting.update(dt);
@@ -214,7 +285,49 @@ function tick() {
     runResumeTimer = RUN_RESUME_DELAY;
   }
 
+  const prevBallZ = ball.mesh.position.z;
   updateBall(ball, dt, scrollDistance, runner.group.position.x);
+
+  // --- Resolve the shot against the goal ------------------------------------
+  if (activeGoal) {
+    const event = updateGoal(activeGoal, ball, dt, prevBallZ);
+    if (event === 'goal') {
+      goalsScored++;
+      scoreEl.textContent = `⚽ ${goalsScored}`;
+      showBanner('GOAL!', BANNER_TIME);
+      // The keeper is beaten: release the run. He collapses and scrolls
+      // away with the goal frame as the player carries on through it.
+      gameState = 'run';
+    } else if (event === 'save') {
+      showBanner('SAVED!', 0.9);
+    }
+  }
+  bannerTimer = Math.max(0, bannerTimer - dt);
+  if (bannerTimer <= 0) bannerEl.classList.remove('show');
+
+  // During a shootout the world is not scrolling, so a spent shot cannot
+  // drift back to the player on its own — hand them a fresh ball instead.
+  if (gameState === 'shootout' && ball.state === 'flight') {
+    const grounded = ball.mesh.position.y <= BALL_RADIUS + 0.02;
+    const stalled = grounded && ball.velocity.lengthSq() < 2;
+    const gone =
+      activeGoal &&
+      ball.mesh.position.z < activeGoal.group.position.z - 1;
+    if (stalled || gone || ball.flightTime > 6) {
+      retryTimer += dt;
+      if (retryTimer >= RETRY_DELAY) {
+        ball.state = 'dribble';
+        ball.velocity.set(0, 0, 0);
+        ball.mesh.position
+          .copy(DRIBBLE_OFFSET)
+          .setX(runner.group.position.x + DRIBBLE_OFFSET.x);
+      }
+    } else {
+      retryTimer = 0;
+    }
+  } else {
+    retryTimer = 0;
+  }
 
   // Kick animation overrides the run cycle on the striking leg
   if (kickTimer > 0) {
