@@ -21,7 +21,7 @@ const MIN_BOUNCE_SPEED = 1.5; // below this vertical speed the ball rolls
 const ROLL_FRICTION = 0.8; // exponential decay rate while rolling (1/s)
 // Ahead of the feet and off to the striking-foot side so the camera can see
 // it past the runner's body
-const DRIBBLE_OFFSET = new THREE.Vector3(0.5, BALL_RADIUS, -1.45);
+export const DRIBBLE_OFFSET = new THREE.Vector3(0.5, BALL_RADIUS, -1.45);
 const UP = new THREE.Vector3(0, 1, 0);
 
 function createBallTexture() {

@@ -93,6 +93,45 @@
         font-size: 11px;
         letter-spacing: 0.12em;
       }
+      #score {
+        position: fixed;
+        top: 12px;
+        left: 16px;
+        color: rgba(255, 255, 255, 0.9);
+        font-family: system-ui, sans-serif;
+        font-size: 20px;
+        font-weight: 700;
+        background: rgba(0, 0, 0, 0.35);
+        padding: 6px 14px;
+        border-radius: 8px;
+        user-select: none;
+        pointer-events: none;
+      }
+      #banner {
+        position: fixed;
+        top: 30%;
+        left: 50%;
+        transform: translate(-50%, -50%) scale(0.6);
+        color: #fff;
+        font-family: system-ui, sans-serif;
+        font-size: 72px;
+        font-weight: 900;
+        font-style: italic;
+        letter-spacing: 0.06em;
+        text-shadow:
+          0 4px 18px rgba(0, 0, 0, 0.55),
+          0 0 40px rgba(255, 255, 255, 0.35);
+        opacity: 0;
+        transition:
+          opacity 0.15s,
+          transform 0.15s;
+        user-select: none;
+        pointer-events: none;
+      }
+      #banner.show {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }
     </style>
   </head>
   <body>
@@ -101,6 +140,8 @@
       &#8592; / &#8594; or A / D to move &middot; click &amp; hold to shoot
       &middot; drag sideways for curve
     </div>
+    <div id="score">&#9917; 0</div>
+    <div id="banner"></div>
     <div id="shoot-ui">
       <div id="power-track"><div id="power-fill"></div></div>
       <div id="curve-track"><div id="curve-dot"></div></div>
