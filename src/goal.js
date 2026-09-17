@@ -224,6 +224,8 @@ function animateBeatenKeeper(goal, dt) {
   }
 }
 
+const _cross = new THREE.Vector3();
+
 /**
  * Per-frame goal logic: keeper AI plus shot resolution. `prevBallZ` is the
  * ball's world z before this frame's physics step, so a fast ball can't
@@ -271,11 +273,29 @@ export function updateGoal(goal, ball, dt, prevBallZ) {
   if (ball.state !== 'flight') return null;
   const ballPos = ball.mesh.position;
 
+  // A hard shot covers more than a metre per frame, so testing the ball's
+  // end-of-frame x/y against a plane it already blew through would judge the
+  // post and the keeper's reach late. Walk back along this frame's motion to
+  // where the ball actually crossed.
+  const crossing = (planeZ, out) => {
+    const travelled = ballPos.z - prevBallZ;
+    const f = travelled === 0
+      ? 1
+      : THREE.MathUtils.clamp((planeZ - prevBallZ) / travelled, 0, 1);
+    const back = (1 - f) * dt;
+    return out.set(
+      ballPos.x - ball.velocity.x * back,
+      ballPos.y - ball.velocity.y * back,
+      planeZ
+    );
+  };
+
   // --- Save: the ball crosses the keeper's plane within his reach -----------
   const saveZ = lineZ + KEEPER_Z;
   if (prevBallZ > saveZ && ballPos.z <= saveZ) {
-    const reachX = ballPos.x - keeper.group.position.x;
-    if (Math.abs(reachX) < KEEPER_REACH && ballPos.y < KEEPER_TOP_REACH) {
+    const at = crossing(saveZ, _cross);
+    const reachX = at.x - keeper.group.position.x;
+    if (Math.abs(reachX) < KEEPER_REACH && at.y < KEEPER_TOP_REACH) {
       // Parried: punched up and out, back toward the player
       const side = Math.sign(reachX) || (Math.random() < 0.5 ? -1 : 1);
       ball.velocity.z = Math.abs(ball.velocity.z) * 0.35;
@@ -293,9 +313,10 @@ export function updateGoal(goal, ball, dt, prevBallZ) {
 
   // --- Goal: the ball crosses the line inside the frame ---------------------
   if (prevBallZ > lineZ && ballPos.z <= lineZ) {
+    const at = crossing(lineZ, _cross);
     if (
-      Math.abs(ballPos.x) < GOAL_WIDTH / 2 - POST_RADIUS &&
-      ballPos.y < GOAL_HEIGHT - POST_RADIUS
+      Math.abs(at.x) < GOAL_WIDTH / 2 - POST_RADIUS &&
+      at.y < GOAL_HEIGHT - POST_RADIUS
     ) {
       goal.scored = true;
       ball.velocity.multiplyScalar(0.3); // the net takes the sting out

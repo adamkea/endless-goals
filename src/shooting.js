@@ -8,7 +8,7 @@ import * as THREE from 'three';
 //  - pointerup fires with whatever power has built up
 // The controller also drives the power/curve HUD while charging.
 
-const CHARGE_TIME = 1.1; // seconds of holding to reach full power
+const CHARGE_TIME = 0.85; // seconds of holding to reach full power
 const CURVE_RANGE_PX = 220; // horizontal drag distance for maximum curve
 
 export class ShootingControls {
