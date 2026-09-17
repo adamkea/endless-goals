@@ -23,10 +23,10 @@ const KICK_DURATION = 0.35; // seconds of kick-leg animation after a shot
 const RUN_RESUME_DELAY = 2; // seconds standing still after a shot is released
 
 // --- Goal loop tunables ---------------------------------------------------
-const GOAL_INTERVAL = 50; // distance run after a goal before the next spawns
-const GOAL_SPAWN_Z = -110; // goals fade in from the fog this far downfield
+const GOAL_INTERVAL = 12; // distance run after a goal before the next spawns
+const GOAL_SPAWN_Z = -68; // goals fade in from the fog this far downfield
 const GOAL_ENGAGE_Z = -18; // goal distance at which the player is held to shoot
-const GOAL_DESPAWN_Z = 18; // a passed goal is removed once this far behind
+const GOAL_DESPAWN_Z = 12; // a passed goal is removed once this far behind
 const RETRY_DELAY = 1.1; // seconds a dead shot lies around before a new ball
 const BANNER_TIME = 2; // seconds the GOAL! banner stays up
 
@@ -41,7 +41,7 @@ container.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87b5e5);
-scene.fog = new THREE.Fog(0x87b5e5, 60, 140);
+scene.fog = new THREE.Fog(0x87b5e5, 40, 110);
 
 const camera = new THREE.PerspectiveCamera(
   60,
@@ -229,6 +229,10 @@ function tick() {
       retryTimer = 0;
     }
 
+    // Once beaten, the goal is only scenery on its way past — so the
+    // countdown to the next one runs while it scrolls off, not after it
+    if (activeGoal.scored) distanceSinceGoal += scrollDistance;
+
     // A beaten goal scrolls off behind the camera and is recycled
     if (activeGoal.group.position.z > GOAL_DESPAWN_Z) {
       scene.remove(activeGoal.group);
@@ -236,13 +240,14 @@ function tick() {
       activeGoal = null;
     }
   } else {
-    // Queue the next goal by distance run
     distanceSinceGoal += scrollDistance;
-    if (distanceSinceGoal >= GOAL_INTERVAL) {
-      distanceSinceGoal = 0;
-      activeGoal = createGoal(GOAL_SPAWN_Z);
-      scene.add(activeGoal.group);
-    }
+  }
+
+  // Queue the next goal by distance run
+  if (!activeGoal && distanceSinceGoal >= GOAL_INTERVAL) {
+    distanceSinceGoal = 0;
+    activeGoal = createGoal(GOAL_SPAWN_Z);
+    scene.add(activeGoal.group);
   }
 
   // While held at the box, clicks aim straight at the goal plane
